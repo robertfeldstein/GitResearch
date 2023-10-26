@@ -10,8 +10,8 @@ product_name = 'ABI-L2-MCMIPM'
 lightning_mapper = 'GLM-L2-LCFA'
 yr = 2023
 day_of_year =205
-hr = 14
-minutes = 5
+hr = 16
+minutes = 60
 #Generate the ABI Datafile 
 
 abiprefix = gen_prefix(product=product_name,year = yr, day=day_of_year, hour = hr)
@@ -105,13 +105,23 @@ combined["Time"] = time_arr
 
 print("Made Initial Dataframe!") 
 
+
+def num_coords(dist_list):
+    count = 0
+    for dist in dist_list:
+        if dist < 2:
+            count += 1
+    return count 
+
+
 shared_coords = []
+count_list = []
 
 for i in range(len(strikes)):
     strike = strikes[i]
     distances = haversine_vector([strike]*len(df["Coordinates"]), df["Coordinates"].to_list())
     min_dist = min(distances)
-
+    
     if min_dist < 2:
         distances = list(distances)
         idx = distances.index(min_dist)
@@ -119,12 +129,16 @@ for i in range(len(strikes)):
         coords = df["Coordinates"].to_list()[idx]
         #assert hs.haversine(strike,coords)<5
         shared_coords.append(coords)
+        count_list.append(num_coords(distances))
+
 
     
 combined["Lightning"] = combined["Coordinates"].isin(shared_coords)
 nmap = {True:1, False:0}
 combined["Lightning"] = combined["Lightning"].map(nmap)
+combined["Counts"] = count_list
 
 combined.to_csv("/Users/robbiefeldstein/Documents/Programming/Research/Datasets/" + date + ".csv")
 #print(combined["Lightning"])
 print(combined["Lightning"].value_counts())
+print(combined["Counts"].value_counts())
