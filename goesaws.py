@@ -255,9 +255,9 @@ def plot_abiglm(merged):
     scan_start = datetime.strptime(merged.time_coverage_start, '%Y-%m-%dT%H:%M:%S.%fZ')
 
     #Plot the GLM Data
-    ax.scatter(merged.event_lon[:], merged.event_lat[:],  marker = ".",color = 'blue',s=50)
-    ax.scatter(merged.group_lon[:], merged.group_lat[:],  marker = ".",color = 'green',s=25)
-    ax.scatter(merged.flash_lon[:], merged.flash_lat[:],  marker = ".",color = 'red',s=1)
+    ax.scatter(merged.event_lon[:], merged.event_lat[:],  marker = ".",color = 'blue',s=1)
+    #ax.scatter(merged.group_lon[:], merged.group_lat[:],  marker = ".",color = 'green',s=25)
+    #ax.scatter(merged.flash_lon[:], merged.flash_lat[:],  marker = ".",color = 'red',s=1)
 
     plt.title('GOES-16 True Color', fontweight='bold', fontsize=15, loc='left')
     plt.title('CONUS 1')

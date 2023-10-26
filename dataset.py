@@ -10,8 +10,8 @@ product_name = 'ABI-L2-MCMIPM'
 lightning_mapper = 'GLM-L2-LCFA'
 yr = 2023
 day_of_year =205
-hr = 16
-minutes = 60
+hr = 18
+minutes = 5
 #Generate the ABI Datafile 
 
 abiprefix = gen_prefix(product=product_name,year = yr, day=day_of_year, hour = hr)
@@ -122,7 +122,7 @@ for i in range(len(strikes)):
     distances = haversine_vector([strike]*len(df["Coordinates"]), df["Coordinates"].to_list())
     min_dist = min(distances)
     
-    if min_dist < 2:
+    if min_dist < 10:
         distances = list(distances)
         idx = distances.index(min_dist)
         #assert len(distances) == len(df["Coordinates"].to_list())
