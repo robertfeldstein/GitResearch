@@ -11,7 +11,7 @@ lightning_mapper = 'GLM-L2-LCFA'
 yr = 2023
 day_of_year =205
 hr = 18
-minutes = 5
+minutes = 30
 #Generate the ABI Datafile 
 
 abiprefix = gen_prefix(product=product_name,year = yr, day=day_of_year, hour = hr)
@@ -37,108 +37,111 @@ dataset2_resampled = skyDS.interp(
 )
 
 nfile = xr.merge([abiDS,dataset2_resampled])
+nfile = nfile.coarsen(x=4,y=4).mean()
+nfile = calc_latlon(nfile)
 
-#Generate the Lightning Data
+df = nfile.to_dataframe()
+
+features = ["CMI_C01", "CMI_C02","CMI_C03","CMI_C04","CMI_C05","CMI_C06","CMI_C07","CMI_C08","CMI_C09","CMI_C10","CMI_C11","CMI_C12","CMI_C13","CMI_C14","CMI_C15","CMI_C16","ACM", "BCM", "Cloud_Probabilities","lat","lon"]
+ndf = df[features].copy()
+ndf["time"] = ndf.index.get_level_values('t')
+ndf.drop_duplicates(inplace=True)
+
+names = ["group_lat","group_lon","group_time_offset"]
 
 glmprefix = gen_prefix(product = "GLM-L2-LCFA", year = yr, day = day_of_year, hour = hr)
 glmfiles = gen_fn(bucket = bucket_name, prefix=glmprefix)
 #There should be 180 GLM files per hour (one every 20 seconds)
 glmdatasets = [gen_data(key=glmfiles[i], bucket = bucket_name) for i in range(0,minutes*3)]
-latitudes = [np.array(glmdatasets[i]["event_lat"].data) for i in range(0,minutes*3)]
+
+latitudes = [np.array(glmdatasets[i][names[0]].data) for i in range(0,minutes*3)]
 lats = np.concatenate(latitudes)
-longitudes = [np.array(glmdatasets[i]["event_lon"].data) for i in range(0,minutes*3)]
+
+# event_latitudes = [np.array(glmdatasets[i][event_names[0]].data) for i in range(0,minutes*3)]
+# event_lats = np.concatenate(event_latitudes)
+
+
+longitudes = [np.array(glmdatasets[i][names[1]].data) for i in range(0,minutes*3)]
 lons= np.concatenate(longitudes)
+
+# event_longitudes = [np.array(glmdatasets[i][event_names[1]].data) for i in range(0,minutes*3)]
+# event_lons = np.concatenate(event_longitudes)
+
+times = [np.array(glmdatasets[i][names[2]].data) for i in range(0,minutes*3)]
+times = np.concatenate(times)
+
+# event_times = [np.array(glmdatasets[i][event_names[2]].data) for i in range(0,minutes*3)]
+# event_times = np.concatenate(event_times)
+
 strikes = list(zip(lats,lons))
+#event_stikes = list(zip(event_lats,event_lons))
 
-nfile = nfile.coarsen(x=4,y=4).mean()
-nfile = calc_latlon(nfile)
+from scipy.spatial import cKDTree
+import pandas as pd
 
+ndf = ndf.reset_index(drop=True)  # reset the index of the ndf dataframe
+#ndf['time'] = ndf['time'].astype(np.int64)  # convert the time column to datetime objects
+tree = cKDTree(ndf[['lat', 'lon']].values)
+distances, indices = tree.query(strikes)
 
-#make the csv file
-#for i in nfile.x (where nfile has been merged and coarsened)
-df_list = []
-for i in range(len(nfile.x)):
-    
-    temp = nfile.isel(x = i)
-    timebds = len(temp.t)
-    lats = temp["lat"].data 
-    lons = temp["lon"].data
-    time = temp["t"].data
-    #print(len(time))
-    
-    coords = list(zip(lats,lons))*timebds
-    
+#event_distances, event_indices = tree.query(event_stikes)
 
-    #y = list(temp["y"].data)*timebds
-   
-    dat = { 'Coordinates':coords}
+# filter out the indices that are not present in the ndf dataframe
+valid_indices = indices[indices < len(ndf)]
 
-    df = pd.DataFrame(dat)
-    #df["Time"] = time[i]
-    #df["lat"] = list(temp.lat.data)*timebds
-    #df["x"] = nfile.x[i].data
-    
-    
+lightning_df = pd.DataFrame({
+    'strike_lat': [strike[0] for strike in strikes],
+    'strike_lon': [strike[1] for strike in strikes],
 
-    variable_list = ["CMI_C01","CMI_C02","CMI_C03","CMI_C04","CMI_C05","CMI_C06","CMI_C07","CMI_C08","CMI_C09","CMI_C10","CMI_C11","CMI_C12","CMI_C13","CMI_C14","CMI_C15", "CMI_C16" ,"ACM","BCM","Cloud_Probabilities"]
+    # 'event_lat': [event_strike[0] for event_strike in event_stikes],
+    # 'event_lon': [event_strike[1] for event_strike in event_stikes],
 
-    for var in range(len(variable_list)):
-        a = variable_list[var]
-        df[a] = np.array([temp[a][i].data for i in range(timebds)]).flatten()
-    df_list.append(df)
+    'time': times, 
+    #'event_time': event_times,
+    'nearest_lat': ndf.loc[valid_indices, 'lat'].values,
+    'nearest_lon': ndf.loc[valid_indices, 'lon'].values,
 
-combined = pd.concat(df_list,axis=0)
-combined = combined.reset_index()
-
-times = nfile["t"].data
-num = len(df)//minutes
+    # 'nearest_event_lat': ndf.loc[event_indices, 'lat'].values,
+    # 'nearest_event_lon': ndf.loc[event_indices, 'lon'].values,
 
 
-time_arr = []
-for time in times:
-    narr = [time]*num
-    time_arr.append(narr)
-
-time_arr = [x for i in time_arr for x in i]*len(nfile.x)
-
-combined["Time"] = time_arr
-
-print("Made Initial Dataframe!") 
+    'distance': distances[indices < len(ndf)],
+    # 'event_distance': event_distances[event_indices < len(ndf)]
+})
 
 
-def num_coords(dist_list):
-    count = 0
-    for dist in dist_list:
-        if dist < 2:
-            count += 1
-    return count 
+lightning_df["lightning"] = 0
+lightning_df.loc[distances < 5, 'lightning'] = 1
+lightning_df["Coordinates"] = list(zip(lightning_df["nearest_lat"],lightning_df["nearest_lon"]))
+
+ndf['time_int'] = ndf['time'].astype(np.int64)
+
+tree = cKDTree(ndf[['time_int']].values.reshape(-1, 1))
+
+time_query = lightning_df['time'].astype(np.int64).values
+
+distances, indices = tree.query(time_query.reshape(-1, 1))
+
+lightning_df['nearest_time'] = ndf.loc[indices, 'time'].values
+
+features = ["CMI_C01", "CMI_C02","CMI_C03","CMI_C04","CMI_C05","CMI_C06","CMI_C07","CMI_C08","CMI_C09","CMI_C10","CMI_C11","CMI_C12","CMI_C13","CMI_C14","CMI_C15","CMI_C16","ACM", "BCM", "Cloud_Probabilities","lat","lon","Coordinates","time","Lightning"]
+ndf["Coordinates"] = list(zip(ndf["lat"],ndf["lon"]))
+
+strike_df = lightning_df[lightning_df["lightning"] == 1]
+
+merged_df = strike_df.merge(ndf, left_on=['nearest_time','Coordinates'], right_on=['time','Coordinates'], how='left')
+#merged_df = merged_df.fillna(0)
+merged_df.drop_duplicates(inplace=True)
+we_want = merged_df.groupby(['Coordinates','nearest_time']).count()["lightning"].reset_index()
+
+final_df = we_want.merge(ndf, left_on = ['nearest_time','Coordinates'], right_on = ['time','Coordinates'], how = 'right')
+final_df = final_df.fillna(0)
+final_df["Lightning"] = final_df["lightning"].apply(lambda x: 1 if x > 0 else 0)
+
+final_df.to_csv("/Users/robbiefeldstein/Documents/Programming/Research/Datasets/May_22_hr_19.csv")
+print(final_df)
+print("Success!")
 
 
-shared_coords = []
-count_list = []
-
-for i in range(len(strikes)):
-    strike = strikes[i]
-    distances = haversine_vector([strike]*len(df["Coordinates"]), df["Coordinates"].to_list())
-    min_dist = min(distances)
-    
-    if min_dist < 10:
-        distances = list(distances)
-        idx = distances.index(min_dist)
-        #assert len(distances) == len(df["Coordinates"].to_list())
-        coords = df["Coordinates"].to_list()[idx]
-        #assert hs.haversine(strike,coords)<5
-        shared_coords.append(coords)
-        count_list.append(num_coords(distances))
 
 
-    
-combined["Lightning"] = combined["Coordinates"].isin(shared_coords)
-nmap = {True:1, False:0}
-combined["Lightning"] = combined["Lightning"].map(nmap)
-combined["Counts"] = count_list
-
-combined.to_csv("/Users/robbiefeldstein/Documents/Programming/Research/Datasets/" + date + ".csv")
-#print(combined["Lightning"])
-print(combined["Lightning"].value_counts())
-print(combined["Counts"].value_counts())
