@@ -1,17 +1,22 @@
 from goesaws import *
 import datetime
+from datetime import datetime
 import pandas as pd
 import sys
-
-date = str(datetime.date.today())
 
 bucket_name = 'noaa-goes16'
 product_name = 'ABI-L2-MCMIPM'
 lightning_mapper = 'GLM-L2-LCFA'
-yr = 2023
-day_of_year =205
-hr = 18
-minutes = 30
+yr = 2022
+day = 12
+month = 7
+hr = 21
+date = datetime(yr,month,day,hr)
+day_of_year = date.timetuple().tm_yday
+#Need to be between 0 and 60
+minutes = 60
+
+fn = str(date.date())
 #Generate the ABI Datafile 
 
 abiprefix = gen_prefix(product=product_name,year = yr, day=day_of_year, hour = hr)
@@ -138,8 +143,8 @@ final_df = we_want.merge(ndf, left_on = ['nearest_time','Coordinates'], right_on
 final_df = final_df.fillna(0)
 final_df["Lightning"] = final_df["lightning"].apply(lambda x: 1 if x > 0 else 0)
 
-final_df.to_csv("/Users/robbiefeldstein/Documents/Programming/Research/Datasets/May_22_hr_19.csv")
-print(final_df)
+final_df.to_csv("/Users/robbiefeldstein/Documents/Programming/Research/Datasets/" + fn + ".csv")
+print(final_df.head())
 print("Success!")
 
 
