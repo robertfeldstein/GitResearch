@@ -3,18 +3,31 @@ import datetime
 from datetime import datetime
 import pandas as pd
 import sys
+import json
 
 bucket_name = 'noaa-goes16'
 product_name = 'ABI-L2-MCMIPM'
 lightning_mapper = 'GLM-L2-LCFA'
-yr = 2022
-day = 12
-month = 7
-hr = 21
+
+if len(sys.argv) > 1:
+    f = open(sys.argv[1])
+    js = json.load(f)
+    yr = js["yr"]
+    day = js["day"]
+    month = js["month"]
+    hr = js["hr"]
+    minutes = js["minutes"]
+else:
+    yr = 2022
+    day = 12
+    month = 7
+    hr = 21
+    minutes = 60
+
 date = datetime(yr,month,day,hr)
 day_of_year = date.timetuple().tm_yday
 #Need to be between 0 and 60
-minutes = 60
+
 
 fn = str(date.date())
 #Generate the ABI Datafile 
