@@ -4,25 +4,17 @@ from datetime import datetime
 import pandas as pd
 import sys
 import json
+from shapely.geometry import Polygon, Point
 
 bucket_name = 'noaa-goes16'
 product_name = 'ABI-L2-MCMIPM'
 lightning_mapper = 'GLM-L2-LCFA'
 
-if len(sys.argv) > 1:
-    f = open(sys.argv[1])
-    js = json.load(f)
-    yr = js["yr"]
-    day = js["day"]
-    month = js["month"]
-    hr = js["hr"]
-    minutes = js["minutes"]
-else:
-    yr = 2022
-    day = 12
-    month = 7
-    hr = 21
-    minutes = 60
+yr = 2022
+day = 21
+month = 5
+hr = 17
+minutes = 60
 
 date = datetime(yr,month,day,hr)
 day_of_year = date.timetuple().tm_yday
@@ -58,6 +50,15 @@ nfile = xr.merge([abiDS,dataset2_resampled])
 nfile = nfile.coarsen(x=4,y=4).mean()
 nfile = calc_latlon(nfile)
 
+lats = nfile['lat'].values.flatten()
+lons = nfile['lon'].values.flatten()
+
+polygon = Polygon(zip(lons, lats))
+
+# Extract the boundary coordinates as a list of tuples
+boundary_coords = list(polygon.exterior.coords)
+boundary_poly = Polygon(boundary_coords)
+
 df = nfile.to_dataframe()
 
 features = ["CMI_C01", "CMI_C02","CMI_C03","CMI_C04","CMI_C05","CMI_C06","CMI_C07","CMI_C08","CMI_C09","CMI_C10","CMI_C11","CMI_C12","CMI_C13","CMI_C14","CMI_C15","CMI_C16","ACM", "BCM", "Cloud_Probabilities","lat","lon"]
@@ -75,24 +76,22 @@ glmdatasets = [gen_data(key=glmfiles[i], bucket = bucket_name) for i in range(0,
 latitudes = [np.array(glmdatasets[i][names[0]].data) for i in range(0,minutes*3)]
 lats = np.concatenate(latitudes)
 
-# event_latitudes = [np.array(glmdatasets[i][event_names[0]].data) for i in range(0,minutes*3)]
-# event_lats = np.concatenate(event_latitudes)
-
-
 longitudes = [np.array(glmdatasets[i][names[1]].data) for i in range(0,minutes*3)]
 lons= np.concatenate(longitudes)
-
-# event_longitudes = [np.array(glmdatasets[i][event_names[1]].data) for i in range(0,minutes*3)]
-# event_lons = np.concatenate(event_longitudes)
 
 times = [np.array(glmdatasets[i][names[2]].data) for i in range(0,minutes*3)]
 times = np.concatenate(times)
 
-# event_times = [np.array(glmdatasets[i][event_names[2]].data) for i in range(0,minutes*3)]
-# event_times = np.concatenate(event_times)
+
+points = [Point(lons[i],lats[i]) for i in range(0,len(lons))] 
+is_inside = [boundary_poly.contains(points[i]) for i in range(0,len(points))]
+
+# Remove the points that are not inside the boundary
+lats = lats[is_inside]
+lons = lons[is_inside]
+times = times[is_inside]
 
 strikes = list(zip(lats,lons))
-#event_stikes = list(zip(event_lats,event_lons))
 
 from scipy.spatial import cKDTree
 import pandas as pd
@@ -129,7 +128,7 @@ lightning_df = pd.DataFrame({
 
 
 lightning_df["lightning"] = 0
-lightning_df.loc[distances < 5, 'lightning'] = 1
+lightning_df.loc[distances < 1, 'lightning'] = 1
 lightning_df["Coordinates"] = list(zip(lightning_df["nearest_lat"],lightning_df["nearest_lon"]))
 
 ndf['time_int'] = ndf['time'].astype(np.int64)
@@ -158,8 +157,5 @@ final_df["Lightning"] = final_df["lightning"].apply(lambda x: 1 if x > 0 else 0)
 
 final_df.to_csv("/Users/robbiefeldstein/Documents/Programming/Research/Datasets/" + fn + ".csv")
 print(final_df.head())
+print(fn)
 print("Success!")
-
-
-
-
